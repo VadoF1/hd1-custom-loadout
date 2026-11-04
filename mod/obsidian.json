@@ -1,0 +1,16 @@
+{
+  "obsidian": 1,
+  "id": "custom-loadout",
+  "version": "1.0.0",
+  "name": {
+    "en": "Custom Loadout"
+  },
+  "description": {
+    "en": "The loadout screen gets four slots instead of one perk: Perk, Sidearm, Grenades and Equipment. The Saber can be picked as a sidearm."
+  },
+  "source": "https://github.com/VadoF1/hd1-custom-loadout",
+  "scope": "session",
+  "entry": "main.lua",
+  "loader_api": 1,
+  "resources": []
+}
