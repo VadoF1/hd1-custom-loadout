@@ -1,9 +1,12 @@
 name: Release
-# Push a tag like v1.2.3 (matching "version" in mod/obsidian.json) and this
-# zips mod/ and publishes a GitHub release that Obsidian's update button reads.
+# Raise "version" in mod/obsidian.json and push to main (or push a tag like
+# v1.2.3). If no release exists for that version yet, this zips mod/ and
+# publishes a GitHub release that Obsidian's update button reads.
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+concurrency: release
 permissions:
   contents: write
 jobs:
@@ -11,21 +14,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check tag matches obsidian.json
+      - name: Read obsidian.json
         id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           id=$(jq -r .id mod/obsidian.json)
           ver=$(jq -r .version mod/obsidian.json)
           src=$(jq -r .source mod/obsidian.json)
-          tag="${GITHUB_REF_NAME#v}"
-          [ "$ver" = "$tag" ] || { echo "Tag $GITHUB_REF_NAME does not match version $ver"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$ver" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match version $ver"; exit 1
+          fi
           [ "$src" = "https://github.com/$GITHUB_REPOSITORY" ] || { echo "source in obsidian.json is $src, expected https://github.com/$GITHUB_REPOSITORY"; exit 1; }
+          if gh release view "v$ver" >/dev/null 2>&1; then
+            echo "Release v$ver already exists, nothing to do."
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          fi
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
           echo "zip=$id-$ver.zip" >> "$GITHUB_OUTPUT"
       - name: Zip the mod
+        if: steps.meta.outputs.skip != '1'
         run: cd mod && zip -r -X "../${{ steps.meta.outputs.zip }}" .
       - name: Publish release
+        if: steps.meta.outputs.skip != '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes=$(awk -v v="## ${GITHUB_REF_NAME#v}" '$0==v{f=1;next} /^## /{f=0} f' CHANGELOG.md)
-          gh release create "$GITHUB_REF_NAME" "${{ steps.meta.outputs.zip }}" --title "$GITHUB_REF_NAME" --notes "${notes:-Release $GITHUB_REF_NAME}"
+          ver="${{ steps.meta.outputs.ver }}"
+          notes=$(awk -v v="## $ver" '$0==v{f=1;next} /^## /{f=0} f' CHANGELOG.md)
+          gh release create "v$ver" "${{ steps.meta.outputs.zip }}" --target "$GITHUB_SHA" --title "v$ver" --notes "${notes:-Release v$ver}"

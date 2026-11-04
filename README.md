@@ -16,6 +16,6 @@ Download `custom-loadout-<version>.zip` from the latest [release](../../releases
 
 1. Replace the files in `mod/` with the new build.
 2. Raise `version` in `mod/obsidian.json` and add a `## <version>` section to `CHANGELOG.md`.
-3. Commit, then tag and push: `git tag v<version> && git push origin main v<version>`.
+3. Commit and push to `main`. (Pushing a tag `v<version>` works too.)
 
-The Release workflow checks the tag against `obsidian.json`, zips `mod/` as `custom-loadout-<version>.zip` and publishes the release. Never change the mod `id`.
+When `main` has a version with no release yet, the Release workflow zips `mod/` as `custom-loadout-<version>.zip` and publishes the release. Never change the mod `id`.
