@@ -22,7 +22,7 @@ local CL = rawget(_G, "CUSTOM_LOADOUT") or {}
 
 rawset(_G, "CUSTOM_LOADOUT", CL)
 
-CL.version = "1.0.0"
+CL.version = "1.0.2"
 CL.obsidian = rawget(_G, "obsidian")
 
 local function log(arg_log_0, ...)
@@ -950,6 +950,18 @@ function M.setup_loadout(arg_3_0, arg_3_1)
 end
 
 function M.draw_menu(arg_6_0, arg_6_1, arg_6_2, arg_6_3, arg_6_4, arg_6_5, arg_6_6, arg_6_7, arg_6_8, arg_6_9, arg_6_10)
+	-- An open list keeps its selection inside the list. The mouse hover index from the
+	-- grid (slots 1-9) can carry over into a list with fewer entries, e.g. Grenades or
+	-- Equipment on a fresh profile, and the list would then select nothing.
+	if arg_6_8.submenu then
+		local var_6_mod_clamp = arg_6_8.available_items[arg_6_8.submenu]
+		local var_6_mod_count = var_6_mod_clamp and #var_6_mod_clamp.groups or 0
+
+		if var_6_mod_count > 0 then
+			arg_6_8.current_selection_index = math.clamp(arg_6_8.current_selection_index or 1, 1, var_6_mod_count)
+		end
+	end
+
 	arg_6_4:set_clip_region({
 		10,
 		100,
@@ -1399,6 +1411,11 @@ end
 function M.draw_perks(arg_7_0, arg_7_1, arg_7_2, arg_7_3, arg_7_4, arg_7_5, arg_7_6, arg_7_7, arg_7_8)
 	local var_7_mod_0 = arg_7_7.available_items[arg_7_7.submenu].groups
 	local var_7_mod_1 = LoadoutSettings.get_loadout_slot(arg_7_7.submenu)
+
+	-- Nothing to pick from (should not happen: every slot has a free default).
+	if #var_7_mod_0 == 0 then
+		return
+	end
 	local var_7_0 = false
 
 	for iter_7_0, iter_7_1 in ipairs(arg_7_7.new_unlocks) do
@@ -1505,7 +1522,7 @@ function M.draw_perks(arg_7_0, arg_7_1, arg_7_2, arg_7_3, arg_7_4, arg_7_5, arg_
 		var_7_8 = var_7_8 - var_7_5
 	end
 
-	var_7_9 = var_7_10 or var_7_9
+	var_7_9 = var_7_10 or var_7_9 or var_7_mod_0[1]
 
 	arg_7_0:draw_description(arg_7_1, arg_7_2, arg_7_3, arg_7_4, arg_7_5, arg_7_6, var_7_9.items[1].loc_name or var_7_9.items[1].name, var_0_mod_item_description(var_7_9.items[1]), var_7_9.items[1].attributes, var_7_9.items[1].upgrade_attributes, nil, nil, arg_7_7, nil, arg_7_8)
 
