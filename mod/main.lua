@@ -22,7 +22,7 @@ local CL = rawget(_G, "CUSTOM_LOADOUT") or {}
 
 rawset(_G, "CUSTOM_LOADOUT", CL)
 
-CL.version = "1.0.2"
+CL.version = "1.0.3"
 CL.obsidian = rawget(_G, "obsidian")
 
 local function log(arg_log_0, ...)
@@ -2078,6 +2078,149 @@ local function patch_menu()
 	log("custom loadout %s: loadout menu patched", CL.version)
 end
 
+-- CharacterStateCarry: carrying an objective that only allows one-handed weapons
+-- (e.g. the black box). The game's carry state hands the fire button to the
+-- weapon as a gun shot and plays the "aim" pose; the Saber ignores shots, so it
+-- was only held out. With the Saber in hand, fire now does what the melee button
+-- does in the carry state (the same melee command, so other players see the
+-- swing too), and once the swing is over the carry pose comes back the way the
+-- game restores it after a weapon switch.
+local function var_0_mod_is_sword(arg_0_mod_20)
+	return Unit.alive(arg_0_mod_20) and EntityAux.has_component(arg_0_mod_20, "meleeweapon") and EntityAux.has_component(arg_0_mod_20, "melee")
+end
+
+-- Carry pose after a swing (mirrors CharacterStateCarry's weapon switch ending).
+local function var_0_mod_carry_pose(arg_0_mod_21, arg_0_mod_22)
+	if arg_0_mod_22.is_dropping or arg_0_mod_22.carry_is_map or not Unit.alive(arg_0_mod_22.current_carry_unit) then
+		return
+	end
+
+	local var_0_mod_23 = Vector3.length(Vector3Aux.unbox(arg_0_mod_22.mover_state.velocity)) > 0.1
+	local var_0_mod_24 = Vector3.length_squared(Vector3Aux.unbox(arg_0_mod_22.input.aim)) > 0.0001
+
+	CharacterStateMachine.animation_event(arg_0_mod_21, "carry_walk")
+
+	if var_0_mod_23 and var_0_mod_24 then
+		CharacterStateMachine.animation_event(arg_0_mod_21, "walk")
+	elseif var_0_mod_23 then
+		CharacterStateMachine.animation_event(arg_0_mod_21, "jog")
+	else
+		CharacterStateMachine.animation_event(arg_0_mod_21, "idle_lower")
+	end
+
+	arg_0_mod_22.carry_was_firing = false
+	arg_0_mod_22.carry_was_aiming = false
+end
+
+local function patch_carry()
+	local var_carry_0 = CharacterStateCarry
+
+	if var_carry_0.mod_custom_loadout then
+		return
+	end
+
+	var_carry_0.mod_custom_loadout = true
+
+	local var_carry_1 = var_carry_0.update
+	local var_carry_2 = var_carry_0.on_exit
+
+	-- Runs the game's update with the given input overrides, restoring the input
+	-- table afterwards; returns true if it queued a melee on the weapon.
+	local function var_carry_3(arg_4_0, arg_4_1, arg_4_2, arg_4_3, arg_4_4, arg_4_5)
+		local var_4_0 = arg_4_1.state.input
+		local var_4_1, var_4_2, var_4_3 = var_4_0.fire, var_4_0.fire_auto, var_4_0.melee
+		local var_4_4 = EntityAux.queue_command_master
+		local var_4_5 = false
+
+		var_4_0.fire = false
+		var_4_0.fire_auto = false
+		var_4_0.melee = arg_4_5
+
+		EntityAux.queue_command_master = function(arg_5_0, arg_5_1, arg_5_2, ...)
+			if arg_5_0 == arg_4_4 and arg_5_1 == "melee" and arg_5_2 == "melee" then
+				var_4_5 = true
+			end
+
+			return var_4_4(arg_5_0, arg_5_1, arg_5_2, ...)
+		end
+
+		local var_4_6, var_4_7 = pcall(var_carry_1, arg_4_0, arg_4_1, arg_4_2, arg_4_3)
+
+		EntityAux.queue_command_master = var_4_4
+		var_4_0.fire = var_4_1
+		var_4_0.fire_auto = var_4_2
+		var_4_0.melee = var_4_3
+
+		if not var_4_6 then
+			error(var_4_7, 0)
+		end
+
+		return var_4_5
+	end
+
+	function var_carry_0.update(arg_2_0, arg_2_1, arg_2_2, arg_2_3)
+		local var_2_0 = arg_2_1.state
+		local var_2_1 = var_2_0.input
+		local var_2_2 = var_2_0.current_weapon
+
+		if type(var_2_1) ~= "table" or not CL.active() or not var_0_mod_is_sword(var_2_2) then
+			var_2_0.mod_cl_carry_swing = nil
+
+			return var_carry_1(arg_2_0, arg_2_1, arg_2_2, arg_2_3)
+		end
+
+		local var_2_3 = EntityAux.state(var_2_2, "melee")
+		local var_2_4 = var_2_3 and var_2_3.melee_time > 0
+		local var_2_5 = var_2_0.mod_cl_carry_swing
+
+		-- mod_cl_carry_swing: seconds since our swing was queued; melee_time starts
+		-- once the queued command has run, so wait for it before calling it over.
+		if var_2_5 then
+			var_2_5 = var_2_5 + arg_2_2
+
+			if var_2_4 then
+				var_2_0.mod_cl_carry_swing_started = true
+			end
+
+			if not var_2_4 and (var_2_0.mod_cl_carry_swing_started or var_2_5 > 0.5) then
+				var_2_0.mod_cl_carry_swing = nil
+				var_2_0.mod_cl_carry_swing_started = nil
+
+				var_0_mod_carry_pose(arg_2_0, var_2_0)
+			else
+				var_2_0.mod_cl_carry_swing = var_2_5
+
+				-- Mid swing: the game's update must not shoot or swing again.
+				var_carry_3(arg_2_0, arg_2_1, arg_2_2, arg_2_3, var_2_2, false)
+
+				return
+			end
+		end
+
+		if not var_2_1.fire and not var_2_1.melee then
+			return var_carry_1(arg_2_0, arg_2_1, arg_2_2, arg_2_3)
+		end
+
+		-- Fire counts as the melee button this frame (the melee button itself is
+		-- tracked too, so its swing also ends in the carry pose).
+		if var_carry_3(arg_2_0, arg_2_1, arg_2_2, arg_2_3, var_2_2, true) then
+			var_2_0.mod_cl_carry_swing = 0
+			var_2_0.mod_cl_carry_swing_started = nil
+		end
+	end
+
+	function var_carry_0.on_exit(arg_3_0, arg_3_1, ...)
+		if type(arg_3_1) == "table" and type(arg_3_1.state) == "table" then
+			arg_3_1.state.mod_cl_carry_swing = nil
+			arg_3_1.state.mod_cl_carry_swing_started = nil
+		end
+
+		return var_carry_2(arg_3_0, arg_3_1, ...)
+	end
+
+	log("custom loadout %s: carry state patched (Saber swings while carrying)", CL.version)
+end
+
 -- Run each patch when its script is first required (or now, if it already ran).
 local var_0_mod_targets = {
 	{
@@ -2094,6 +2237,11 @@ local var_0_mod_targets = {
 		"lua/menu/menu_screen_loadout",
 		"MenuScreenLoadout",
 		patch_menu
+	},
+	{
+		"lua/character_states/character_state_carry",
+		"CharacterStateCarry",
+		patch_carry
 	}
 }
 

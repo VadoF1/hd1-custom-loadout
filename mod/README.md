@@ -10,7 +10,8 @@ The loadout screen's single PERKS box becomes four slots:
 | Equipment | Laser Aim Module, Heavy Armor, MD-99 Auto-Injector, Displacement Field, All Terrain Boots |
 
 A sidearm or grenade type is available once its old perk is unlocked. The
-Saber is always available. Old loadouts move their perk into the matching
+Saber is always available. It also swings while you carry an objective that only allows
+one-handed weapons, such as the black box. Old loadouts move their perk into the matching
 slot the first time you open the screen.
 
 ## Install
