@@ -27,14 +27,14 @@ Vector3.length_squared = function(v) return v.x * v.x + v.y * v.y + v.z * v.z en
 Vector3Aux = { unbox = function(b) return Vector3(b[1], b[2], b[3]) end }
 
 local alive = {}
+local commands, anims = {}, {}
 Unit = {
 	alive = function(u) return u ~= nil and alive[u] == true end,
-	flow_event = function() end,
+	flow_event = function(u, e) if e == "on_wielded" then anims[#anims + 1] = "flow:on_wielded" end end,
 }
 
 local components = {}
 local melee_state = {}
-local commands, anims = {}, {}
 local pending_melee = {}
 
 EntityAux = {
@@ -128,6 +128,8 @@ frame(ctx)
 check(count("melee") == 1, "fire with Saber queues a melee swing")
 check(count("firing_single") == 0, "fire with Saber is not sent as a gun shot")
 check(not has_anim("aim"), "fire with Saber does not play the hold-out (aim) pose")
+check(anims[1] == "no_animation_fullbody" and has_anim("no_animation") and has_anim("flow:on_wielded") and has_anim("idle_upper") and has_anim("idle_lower"), "swing leaves the carry pose first (" .. table.concat(anims, ",") .. ")")
+check(not has_anim("carry_walk"), "no carry pose during the swing frame")
 check(ctx.state.input.fire == true and ctx.state.input.fire_auto == true and ctx.state.input.melee == false, "input table restored after the frame")
 
 local extra, extra_shots = 0, 0
@@ -142,11 +144,24 @@ check(ctx.state.mod_cl_carry_swing == nil, "swing tracking cleared")
 
 -- held fire repeats swings, like the normal Saber
 ctx.state.input.fire, ctx.state.input.fire_auto = true, true
-local swings = 0
-for i = 1, 40 do frame(ctx) swings = swings + count("melee") end
+local swings, carry_between = 0, false
+for i = 1, 40 do frame(ctx) swings = swings + count("melee") if has_anim("carry_walk") then carry_between = true end end
+check(not carry_between, "held fire: no carry pose flicker between swings")
 check(swings >= 3 and swings <= 4, "held fire keeps swinging (" .. swings .. " swings in 1.33 s)")
 ctx.state.input.fire, ctx.state.input.fire_auto = false, false
 for i = 1, 12 do frame(ctx) end
+
+-- aiming while swinging does not switch to the aim pose
+ctx.state.input.aim = { 1, 0, 0 }
+ctx.state.input.fire = true
+local aim_mid = false
+frame(ctx)
+ctx.state.input.fire = false
+for i = 1, 9 do frame(ctx) if has_anim("aim") or has_anim("no_animation") then aim_mid = true end end
+check(not aim_mid, "aiming mid swing: no aim/no_animation pose change")
+for i = 1, 6 do frame(ctx) end
+ctx.state.input.aim = { 0, 0, 0 }
+for i = 1, 3 do frame(ctx) end
 
 -- melee button with Saber still swings and is tracked
 ctx.state.input.melee = true

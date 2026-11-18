@@ -2083,14 +2083,17 @@ end
 -- weapon as a gun shot and plays the "aim" pose; the Saber ignores shots, so it
 -- was only held out. With the Saber in hand, fire now does what the melee button
 -- does in the carry state (the same melee command, so other players see the
--- swing too), and once the swing is over the carry pose comes back the way the
--- game restores it after a weapon switch.
+-- swing too). For the swing the carry pose is dropped so the Saber's normal
+-- swing animation plays, and once the swing is over the carry pose comes back
+-- the way the game restores it after a weapon switch.
 local function var_0_mod_is_sword(arg_0_mod_20)
 	return Unit.alive(arg_0_mod_20) and EntityAux.has_component(arg_0_mod_20, "meleeweapon") and EntityAux.has_component(arg_0_mod_20, "melee")
 end
 
 -- Carry pose after a swing (mirrors CharacterStateCarry's weapon switch ending).
 local function var_0_mod_carry_pose(arg_0_mod_21, arg_0_mod_22)
+	arg_0_mod_22.mod_cl_carry_posed = nil
+
 	if arg_0_mod_22.is_dropping or arg_0_mod_22.carry_is_map or not Unit.alive(arg_0_mod_22.current_carry_unit) then
 		return
 	end
@@ -2110,6 +2113,24 @@ local function var_0_mod_carry_pose(arg_0_mod_21, arg_0_mod_22)
 
 	arg_0_mod_22.carry_was_firing = false
 	arg_0_mod_22.carry_was_aiming = false
+end
+
+-- Before a swing: leave the carry pose the way the game does when a carry ends
+-- (CharacterStateCarry.on_exit, then CharacterStateIdle.on_enter), so the
+-- Saber's own swing animation plays instead of the carry/aim pose.
+local function var_0_mod_swing_pose(arg_0_mod_25, arg_0_mod_26, arg_0_mod_27)
+	CharacterStateMachine.animation_event(arg_0_mod_25, "no_animation_fullbody")
+	CharacterStateMachine.animation_event(arg_0_mod_25, "no_animation")
+	Unit.flow_event(arg_0_mod_27, "on_wielded")
+	CharacterStateMachine.animation_event(arg_0_mod_25, "idle_upper")
+
+	local var_0_mod_28 = Vector3.length(Vector3Aux.unbox(arg_0_mod_26.mover_state.velocity)) > 0.1
+
+	CharacterStateMachine.animation_event(arg_0_mod_25, var_0_mod_28 and "jog" or "idle_lower")
+
+	arg_0_mod_26.mod_cl_carry_posed = true
+	arg_0_mod_26.carry_was_firing = false
+	arg_0_mod_26.carry_was_aiming = Vector3.length_squared(Vector3Aux.unbox(arg_0_mod_26.input.aim)) > 0.0001
 end
 
 local function patch_carry()
@@ -2139,6 +2160,8 @@ local function patch_carry()
 		EntityAux.queue_command_master = function(arg_5_0, arg_5_1, arg_5_2, ...)
 			if arg_5_0 == arg_4_4 and arg_5_1 == "melee" and arg_5_2 == "melee" then
 				var_4_5 = true
+
+				var_0_mod_swing_pose(arg_4_0, arg_4_1.state, arg_4_4)
 			end
 
 			return var_4_4(arg_5_0, arg_5_1, arg_5_2, ...)
@@ -2165,6 +2188,7 @@ local function patch_carry()
 
 		if type(var_2_1) ~= "table" or not CL.active() or not var_0_mod_is_sword(var_2_2) then
 			var_2_0.mod_cl_carry_swing = nil
+			var_2_0.mod_cl_carry_posed = nil
 
 			return var_carry_1(arg_2_0, arg_2_1, arg_2_2, arg_2_3)
 		end
@@ -2186,11 +2210,19 @@ local function patch_carry()
 				var_2_0.mod_cl_carry_swing = nil
 				var_2_0.mod_cl_carry_swing_started = nil
 
-				var_0_mod_carry_pose(arg_2_0, var_2_0)
+				-- With fire still held the next swing follows at once, so the carry
+				-- pose only comes back when no further swing starts (below).
+				if not var_2_1.fire and not var_2_1.melee then
+					var_0_mod_carry_pose(arg_2_0, var_2_0)
+				end
 			else
 				var_2_0.mod_cl_carry_swing = var_2_5
 
-				-- Mid swing: the game's update must not shoot or swing again.
+				-- Mid swing: the game's update must not shoot, swing again or switch
+				-- to the aim pose (it only does so when aiming starts or stops).
+				var_2_0.carry_was_firing = false
+				var_2_0.carry_was_aiming = Vector3.length_squared(Vector3Aux.unbox(var_2_1.aim)) > 0.0001
+
 				var_carry_3(arg_2_0, arg_2_1, arg_2_2, arg_2_3, var_2_2, false)
 
 				return
@@ -2206,6 +2238,8 @@ local function patch_carry()
 		if var_carry_3(arg_2_0, arg_2_1, arg_2_2, arg_2_3, var_2_2, true) then
 			var_2_0.mod_cl_carry_swing = 0
 			var_2_0.mod_cl_carry_swing_started = nil
+		elseif var_2_0.mod_cl_carry_posed and not var_2_0.new_state then
+			var_0_mod_carry_pose(arg_2_0, var_2_0)
 		end
 	end
 
@@ -2213,6 +2247,7 @@ local function patch_carry()
 		if type(arg_3_1) == "table" and type(arg_3_1.state) == "table" then
 			arg_3_1.state.mod_cl_carry_swing = nil
 			arg_3_1.state.mod_cl_carry_swing_started = nil
+			arg_3_1.state.mod_cl_carry_posed = nil
 		end
 
 		return var_carry_2(arg_3_0, arg_3_1, ...)
